@@ -8,7 +8,7 @@ Set objFSO=CreateObject("Scripting.FileSystemObject")
 Set objNetwork = CreateObject("Wscript.Network")
 'Wscript.Echo "The current user is " & objNetwork.UserName
  'strPath="C:\Users\" + objNetwork.UserName +"\Appdata\Local\Temp\SyncTime.ps1"
-strPath="C:\ProgramData\Flender\SetTimeZone\SyncTime.ps1"
+strPath="C:\ProgramData\CompanyName\SetTimeZone\SyncTime.ps1"
 'wscript.quit(0)
 'verify file exists
  If objFSO.FileExists(strPath) Then

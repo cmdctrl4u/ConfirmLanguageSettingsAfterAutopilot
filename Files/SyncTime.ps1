@@ -30,7 +30,7 @@ Function RemoveScheduledTask {
  
  try {
     LogWrite "About to remove scheduled task: $TaskName..."
-    Unregister-ScheduledTask -TaskName $TaskName -TaskPath "\Flender\" -Confirm:$false -ErrorAction Stop | Out-Null
+    Unregister-ScheduledTask -TaskName $TaskName -TaskPath "\CompanyName\" -Confirm:$false -ErrorAction Stop | Out-Null
     LogWrite "Successfully removed the scheduled task"
     return $true
     }
@@ -139,7 +139,7 @@ $service = Get-Service -Name $serviceName
         $CompanyNetworkDetected = $false
         $InternetDetected = $false
         $ips = $null
-        $fqdn = "fle01.flender.net"
+        $fqdn = "contoso.com"
         
         # let's see are we on Zscaler...
         LogWrite "Checking type of network access"    
@@ -148,47 +148,47 @@ $service = Get-Service -Name $serviceName
         # are we on Zscaler private access ?
         try {$ips = [System.Net.Dns]::GetHostAddresses("$fqdn")
                 #$ips.IPAddressToString
-                    if ($ips.IPAddressToString.StartsWith("100.64.")){
+                    if ($ips.IPAddressToString.StartsWith("10.168.")){
                         $ZscalerDetected = $true}
             }
         catch {LogWrite "Error getting FQDN for $fqdn, not connected to Zscaler private access"
         }
         LogWrite "on Zscaler: $ZscalerDetected "
 
-        # are we on the Flender LAN ?
-        LogWrite "Checking if on Flender network access"
+        # are we on the CompanyName LAN ?
+        LogWrite "Checking if on Companyname network access"
         try {$ips = [System.Net.Dns]::GetHostAddresses("$fqdn")
         
-            if ($ips.IPAddressToString.StartsWith("10.189.")){
+            if ($ips.IPAddressToString.StartsWith("192.168.")){
                 $CompanyNetworkDetected = $true}
         }
-        catch {LogWrite "Error getting FQDN for $fqdn, not on Flender wired LAN network"
+        catch {LogWrite "Error getting FQDN for $fqdn, not on CompanyName wired LAN network"
         }
-        LogWrite "on Flender wired LAN: $CompanyNetworkDetected "
+        LogWrite "on CompanyName wired LAN: $CompanyNetworkDetected "
 
-        # if we are on Flender LAN, let's determine the datacenter location...
+        # if we are on CompanyName LAN, let's determine the datacenter location...
         if ($CompanyNetworkDetected -or $ZscalerDetected){
-        LogWrite "Flender LAN was detected, checking which datacenter now..."
+        LogWrite "CompanyName LAN was detected, checking which datacenter now..."
          try {$ips = [System.Net.Dns]::GetHostAddresses("$fqdn")
                 LogWrite  "$fqdn ip address:  $ips.IPAddressToString"
-                if  ($ips.IPAddressToString -eq "10.189." -or "100.64.1.12"){
-                $DataCenter = "Bocholt"
-                $NTPServer = "ntp.flender.local,ntp2.flender.local,time.windows.com"}
+                if  ($ips.IPAddressToString -eq "192.168." -or "10.168"){
+                $DataCenter = "Datacentername"
+                $NTPServer = "ntp.CompanyName.local,ntp2.CompanyName.local,time.windows.com"}
                 
             }
         catch { LogWrite "Error getting FQDN for $fqdn, could not determine Datacenter location"
         }
          LogWrite "dataCenter: $DataCenter "}
         
-        #if ($ipv4.StartsWith('192.') -or $ZscalerDetected) {Set-NTPServer -Server 'time.Flender.com'
+        #if ($ipv4.StartsWith('192.') -or $ZscalerDetected) {Set-NTPServer -Server 'time.CompanyName.com'
         if ($CompanyNetworkDetected -or $ZscalerDetected) {
         
         Set-NTPServer -Server $NTPServer
-            LogWrite "Looks like we are on a Flender network so setting '$NTPServer'"
+            LogWrite "Looks like we are on a CompanyName network so setting '$NTPServer'"
             if (Set-SystemTime) { cleanup }
             }
             else {Set-NTPServer 'time.windows.com'
-            LogWrite "we could NOT resolve 'ntp.flender.local' so we are setting NTP to 'time.windows.com'"
+            LogWrite "we could NOT resolve 'ntp.CompanyName.local' so we are setting NTP to 'time.windows.com'"
             if (Set-SystemTime) { cleanup }
             }
 }

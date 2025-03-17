@@ -213,9 +213,6 @@ function Install-ADTDeployment
         }
 
 
-        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Checking if scheduled task $taskName already exists..."   
-        $taskExists = Get-ScheduledTask | Where-Object {$_.TaskName -like $taskName }
-
             if($taskExists){
                 Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Task already exists. Nothing to do here. Exiting script." 
                 Close-ADTSession -ExitCode 0 

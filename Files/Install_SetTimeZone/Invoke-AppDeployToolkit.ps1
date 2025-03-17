@@ -109,7 +109,12 @@ function Install-ADTDeployment
        }
 
        # Retrieve the currently logged-on console user
-       $localUserFull = Get-CimInstance -ClassName Win32_ComputerSystem | select-object -ExpandProperty UserName
+        $localUserFull = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty UserName
+
+        if ($localUserFull -match "WsiAccount") {
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "WsiaAccount is logged on. Exiting script"
+            Close-ADTSession -ExitCode 0
+        }
 
 
        #-----------------------------------------------------------------------------------------------------------------------------------------------------------------------#
@@ -218,8 +223,6 @@ function Install-ADTDeployment
             if ($timeDifference -le $hours){  
                 Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Time difference is less 182,5 days. The logged on user is: $localUserFull" 
     
-                # Check again
-                $localUserFull = Get-CimInstance -ClassName Win32_ComputerSystem | select-object -ExpandProperty UserName
                 # Ensure the logged-in user is not 'defaultuser0'
                 if (-Not ($localUserFull -match 'defaultuser0')){
      

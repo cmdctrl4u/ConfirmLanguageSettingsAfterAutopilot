@@ -18,7 +18,7 @@
         LogPath = '$envProgramData\Microsoft\IntuneManagementExtension\Logs'
 
         # Log path used for MSI logging when RequireAdmin is False.
-        LogPathNoAdminRights = '$envProgramData\Logs\Software\CompanyName'
+        LogPathNoAdminRights = '$envProgramData\Logs\Software'
 
         # The length of time in seconds to wait for the MSI installer service to become available. Default is 600 seconds (10 minutes).
         MutexWaitTime = 600
@@ -56,7 +56,7 @@
         LogPath = '$envProgramData\Microsoft\IntuneManagementExtension\Logs'
 
         # Same as LogPath but used when RequireAdmin is False.
-        LogPathNoAdminRights = '$envProgramData\Logs\Software\CompanyName'
+        LogPathNoAdminRights = '$envProgramData\Logs\Software'
 
         # Specifies that a subfolder based on InstallName should be used for all log capturing.
         LogToSubfolder = $false

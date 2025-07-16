@@ -26,6 +26,9 @@ param
     [System.Management.Automation.SwitchParameter]$DisableLogging
 )
 
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ParentPath = Split-Path -Parent $ScriptRoot
+. "$ParentPath\GlobalVariables.ps1"
 
 ##================================================
 ## MARK: Variables
@@ -33,8 +36,8 @@ param
 
 $adtSession = @{
     # App variables.
-    AppVendor = 'CompanyName'
-    AppName = 'Set language settings global'
+    AppVendor = $GVCompanyname
+    AppName = $GVAppName +' - Set'
     AppVersion = ''
     AppArch = ''
     AppLang = 'EN'
@@ -61,6 +64,12 @@ function Install-ADTDeployment
     ## MARK: Pre-Install
     ##================================================
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
+
+    $taskname_ConfirmLanguageSettings_GUI = $GVAppName + ' - GUI'
+    $taskname_SyncTime = $GVAppName + ' - SyncTime'
+    $taskname_SetLanguageSettings = $GVAppName + ' - Set Language Settings'
+    $CsvPath = "$envProgramData\$($adtSession.AppVendor)\$GVAppName\GUI\Files\results.csv"
+
 
     Write-Host "Is 64bit PowerShell: $([Environment]::Is64BitProcess)"
     Write-Host "Is 64bit OS: $([Environment]::Is64BitOperatingSystem)"
@@ -103,7 +112,7 @@ function Install-ADTDeployment
 
     ## <Perform Pre-Installation tasks here>
 
-    ##------------------------------- CompanyName - Check if folder exists, otherwise create it ---------------------------##
+    ##------------------------------- Check if folder exists, otherwise create it ---------------------------##
     
     $folderpath = "$envProgramData\LanguageSettingsConfirmed.ps1.tag"
     
@@ -111,19 +120,19 @@ function Install-ADTDeployment
     {
         Write-ADTLogEntry -Source $adtSession.InstallPhase -Message "User confirmed settings. Will only run the cleanup" -LogType 'CMTrace'
 
-        $TaskName = "SetTimeZone"
+        $TaskName = $taskname_ConfirmLanguageSettings_GUI
         $Delete = RemoveScheduledTask $TaskName
         Show-ADTInstallationProgress -StatusMessage "Was the scheduled task SetTimeZone removed: $Delete"
 
-        $TaskName = "SetGlobalLanguageSettings based on EventId"
+        $TaskName = $taskname_SetLanguageSettings
         $Delete = RemoveScheduledTask $TaskName
         Show-ADTInstallationProgress -StatusMessage "Was the scheduled task SetTimeZone removed: $Delete"
 
-        $TaskName = "SyncTime based on EventId"
+        $TaskName = $taskname_SyncTime
         $Delete = RemoveScheduledTask $TaskName
         Show-ADTInstallationProgress -StatusMessage "Was the scheduled task SetTimeZone removed: $Delete"
    
-        ##---------------------------------------- CompanyName - Remove file ---------------------------------------##
+        ##---------------------------------------- Remove file ---------------------------------------##
         
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Remove file - PathToFile: $folderpath"
         Remove-ADTFile -Path $folderpath
@@ -142,7 +151,7 @@ function Install-ADTDeployment
     ## <Perform Installation tasks here>
 
     # Path to CSV-Datei
-    $CsvPath = "$envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\results.csv"
+    
 
     # Read file and import 2nd line
     $lines = Get-Content -Path $CsvPath
@@ -158,8 +167,8 @@ function Install-ADTDeployment
 
 
         # Display variables
-        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Sprache: $language"
-        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Tastaturlayout: $keyboardLayout"
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Language: $language"
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Keyboard layout: $keyboardLayout"
     } else {
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "The file does not contain enough lines."
     }
@@ -256,11 +265,15 @@ try {
 
     Start-Sleep -Seconds 4
 
-    $TaskName = "SetTimeZone"
+    $TaskName = $taskname_ConfirmLanguageSettings_GUI
         $Delete = RemoveScheduledTask $TaskName
         Show-ADTInstallationProgress -StatusMessage "Was the scheduled task SetTimeZone removed: $Delete"
 
-    $TaskName = "SetGlobalLanguageSettings based on EventId"
+    $TaskName = $taskname_SetLanguageSettings
+        $Delete = RemoveScheduledTask $TaskName
+        Show-ADTInstallationProgress -StatusMessage "Was the scheduled task SetTimeZone removed: $Delete"
+
+        $TaskName = $taskname_SyncTime
         $Delete = RemoveScheduledTask $TaskName
         Show-ADTInstallationProgress -StatusMessage "Was the scheduled task SetTimeZone removed: $Delete"
    

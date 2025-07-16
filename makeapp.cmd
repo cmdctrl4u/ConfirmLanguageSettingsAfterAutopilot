@@ -1,0 +1,1 @@
+intunewinapputil.exe -c ".\source" -s Invoke-AppDeployToolkit.exe -o .\ -q

@@ -1,0 +1,15 @@
+Name: 						Confirm language settings after Autopilot
+Publisher: 					CmdCtrl4U
+
+Install command: 			ServiceUI_x64.exe -Process:explorer.exe Invoke-AppDeployToolkit.exe -DeploymentType "Install"
+Uninstall command: 			ServiceUI_x64.exe -Process:explorer.exe Invoke-AppDeployToolkit.exe -DeploymentType "Uninstall"
+
+Allow available uninstall: 	No
+Install behavior:			System
+
+Detection rules (File)
+		
+		Rule type: 			File
+		Path:				%ProgramData%\Microsoft\Autopilot\
+		File or folder:		SetLanguageSettings.ps1.tag
+		Detection method:	File or folder exists

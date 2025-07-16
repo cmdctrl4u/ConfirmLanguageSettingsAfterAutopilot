@@ -1,0 +1,10 @@
+$GVCompanyname = "CmdCtrl4U" # Your company name. Name must be without spaces and special characters.
+$GVAppName = "ConfirmLanguageSettings" # Name of the application. Name must be without spaces and special characters.
+$GVhours = 4380 # Time frame, starting from installation date, within this script should run. 
+$GVTestMode = $False # Set to $True to run in test mode, $False for production
+$GVFQDN = "cmdctrl4u.net" # FQDN of your company
+$GVNTP1 = "ntp1.cmdctrl4u.net" # Primary NTP server
+$GVNTP2 = "ntp2.cmdctrl4u.net" # Secondary NTP server
+$GVIPv4Network = "10.189." # IPv4 network prefix for company network
+$GVIPv4ZScaler = "100.64." # IPv4 network prefix for Zscaler private access
+$GVDatacenter = "DatacenterLocationName" # Default datacenter location

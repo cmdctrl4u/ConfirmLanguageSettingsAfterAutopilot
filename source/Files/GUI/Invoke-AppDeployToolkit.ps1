@@ -28,6 +28,9 @@ param
     [System.Management.Automation.SwitchParameter]$DisableLogging
 )
 
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ParentPath = Split-Path -Parent $ScriptRoot
+. "$ParentPath\GlobalVariables.ps1"
 
 ##================================================
 ## MARK: Variables
@@ -35,34 +38,65 @@ param
 
 $adtSession = @{
     # App variables.
-    AppVendor = 'CompanyName'
-    AppName = 'Set language settings'
-    AppVersion = ''
-    AppArch = ''
-    AppLang = 'EN'
-    AppRevision = '01'
-    AppSuccessExitCodes = @(0)
-    AppRebootExitCodes = @(1641, 3010)
-    AppScriptVersion = '1.0.0'
-    AppScriptDate = '2025-01-29'
-    AppScriptAuthor = 'M. Langenhoff'
+    AppVendor                   = $GVCompanyname
+    AppName                     = $GVAppName +' - GUI'
+    AppVersion                  = ''
+    AppArch                     = ''
+    AppLang                     = 'EN'
+    AppRevision                 = '01'
+    AppSuccessExitCodes         = @(0)
+    AppRebootExitCodes          = @(1641, 3010)
+    AppScriptVersion            = '1.0.0'
+    AppScriptDate               = '2025-01-29'
+    AppScriptAuthor             = 'M. Langenhoff'
 
     # Install Titles (Only set here to override defaults set by the toolkit).
-    InstallName = ''
-    InstallTitle = ''
+    InstallName                 = ''
+    InstallTitle                = ''
 
     # Script variables.
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
-    DeployAppScriptVersion = '4.0.5'
-    DeployAppScriptParameters = $PSBoundParameters
+    DeployAppScriptVersion      = '4.0.5'
+    DeployAppScriptParameters   = $PSBoundParameters
 }
 
-function Install-ADTDeployment
-{
+function Install-ADTDeployment {
     ##================================================
     ## MARK: Pre-Install
     ##================================================
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
+
+    # Log installation start
+    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Start logging..."
+    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting the pre-installation of $($adtSession.AppVendor) - $($adtSession.AppName)" 
+
+    ####################################################################################################
+    ## Variables and additional information
+    ####################################################################################################
+
+    $hours = $GVhours  # Time frame, starting from installation date, within this script should run. 
+    $EnrollDateTime = (Get-Item -Path "$envProgramFilesX86\Microsoft Intune Management Extension").CreationTimeUtc # Get the installation date of Microsoft Intune Management Extension
+    $TimeNow = Get-Date # Get the current date
+    $TimeDifference = $TimeNow - $EnrollDateTime # Calculate the time difference in hours since installation
+    $hoursDetected = [math]::Round($TimeDifference.TotalHours, 2) # Calculate the time difference in hours and round it to 2 decimal places
+    
+    #For  testing. !! DO NOT FORGET to set $GVTestMode to 'False' before using this script in production
+    if($GVTestMode -eq $True) {
+        $TimeDifference = 1 # Set to 1 hour for testing purposes
+    }
+    else {
+        $TimeDifference = $TimeDifference # Use the actual time difference in production
+    }
+    
+   
+    $registrypath = "HKCU:\Software\WOW6432Node\$($adtSession.AppVendor)\ComputerManagement\Autopilot"
+    $regKey = 'Autopilot'
+    $csvZoneMapping = "$envProgramData\$($adtSession.AppVendor)\$GVAppName\GUI\Files\zonemapping.csv"
+    $csvGeoIDs = "$envProgramData\$($adtSession.AppVendor)\$GVAppName\GUI\Files\GeoIDs.csv"
+    $csvWindowsLCID = "$envProgramData\$($adtSession.AppVendor)\$GVAppName\GUI\Files\WindowsLCID.csv"
+    $csvTimeZones = "$envProgramData\$($adtSession.AppVendor)\$GVAppName\GUI\Files\TimeZones.csv" 
+    $CsvResults = "$envProgramData\$($adtSession.AppVendor)\$GVAppName\GUI\Files\results.csv"
+
 
     Write-Host "Is 64bit PowerShell: $([Environment]::Is64BitProcess)"
     Write-Host "Is 64bit OS: $([Environment]::Is64BitOperatingSystem)"
@@ -72,11 +106,11 @@ function Install-ADTDeployment
         write-warning "Running in 32-bit Powershell, starting 64-bit..."
         if ($myInvocation.Line) {
             &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $myInvocation.Line
-        }else{
+        }
+        else {
             &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($myInvocation.InvocationName)" $args
         }
-        
-        
+                
         exit $lastexitcode
     }
 
@@ -88,77 +122,65 @@ function Install-ADTDeployment
     Function RemoveScheduledTask {
  
         try {
-           Show-ADTInstallationProgress -StatusMessage "About to remove scheduled task: $TaskName..."
-           Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop | Out-Null
-           Show-ADTInstallationProgress -StatusMessage "Successfully removed the scheduled task"
-           return $true
-           }
+            Show-ADTInstallationProgress -StatusMessage "About to remove scheduled task: $TaskName..."
+            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop | Out-Null
+            Show-ADTInstallationProgress -StatusMessage "Successfully removed the scheduled task"
+            return $true
+        }
        
-       catch {
+        catch {
             Show-ADTInstallationProgress -StatusMessage "Couldn't remove scheduled task, please see the reason why in the debug line below this one."
             $ErrorMessage = $_.Exception.Message  # Catch the error
             Show-ADTInstallationProgress -StatusMessage "DEBUG: $ErrorMessage"
             return $false
-           }   
-       }
+        }   
+    }
 
-    Function Cleanup{
+    Function Cleanup {
         # Delete the scheduled task so this won't run again...
         #$TaskName = "SetTimeZone"
         #$Delete = RemoveScheduledTask $TaskName
         #Show-ADTInstallationProgress -StatusMessage "Was the scheduled task removed: $Delete"
         Show-ADTInstallationProgress -StatusMessage "Exiting script."
         Close-ADTSession -ExitCode 0
-        }
+    }
 
     function Test-RegistryKey {
 
         param (
         
-        [parameter(Mandatory=$true)]
-        [ValidateNotNullOrEmpty()]$Path
+            [parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]$Path
         )
         
         try {
             Get-ItemProperty -Path $Path -ErrorAction Stop | Out-Null
             return $true
-            }
+        }
         
         catch {
             return $false
-            }
         }
+    }
 
-    Function CheckEnrollmentDate{
+    Function CheckEnrollmentDate {
         # Sets $EnrollmentDateOK = $True if enrolled date is within the last $hours hours...
-    
-        # Get the installation date of Microsoft Intune Management Extension
-        $EnrollDateTime = (Get-Item -Path "$envProgramFilesX86\Microsoft Intune Management Extension").CreationTimeUtc
-        $TimeNow = Get-Date
-        $hours = "4380"
-        
-    
+
         Show-ADTInstallationProgress -StatusMessage "Current date/time = $TimeNow, computer install date/time = $EnrollDateTime"
-        
-        $timeDifference = $TimeNow - $EnrollDateTime
-        $hoursDetected = [math]::Round($TimeDifference.TotalHours, 2)
-        #un rem next line to force it to run always
-        #$hoursDetected = "1"
-        
-    
-        if ($hoursDetected -gt $hours)
-            {  Show-ADTInstallationProgress -StatusMessage "Oops, the enroll date [$EnrollDateTime] was created more than $hours hours ago, will not do anything..."
-                Show-ADTInstallationProgress -StatusMessage "Hours since enrollment: $hoursDetected" 
-                $EnrollmentDateOK = $False
-                return $EnrollmentDateOK
-            }
-            Else
-            {  Show-ADTInstallationProgress -StatusMessage "Enroll date [$EnrollDateTime] created within the last $hours hours..."
-                Show-ADTInstallationProgress -StatusMessage "Hours since enrollment: $hoursDetected" 
-                $EnrollmentDateOK = $True
-                return $EnrollmentDateOK
-            }
+  
+        if ($hoursDetected -gt $hours) {
+            Show-ADTInstallationProgress -StatusMessage "Oops, the enroll date [$EnrollDateTime] was created more than $hours hours ago, will not do anything..."
+            Show-ADTInstallationProgress -StatusMessage "Hours since enrollment: $hoursDetected" 
+            $EnrollmentDateOK = $False
+            return $EnrollmentDateOK
         }
+        Else {
+            Show-ADTInstallationProgress -StatusMessage "Enroll date [$EnrollDateTime] created within the last $hours hours..."
+            Show-ADTInstallationProgress -StatusMessage "Hours since enrollment: $hoursDetected" 
+            $EnrollmentDateOK = $True
+            return $EnrollmentDateOK
+        }
+    }
    
     ##================================================
     ## MARK: Install
@@ -167,25 +189,22 @@ function Install-ADTDeployment
 
     ## <Perform Installation tasks here>
 
-    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Start SetTimeZone-GUI"
+    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Start $adtSession.InstallPhase phase of $($adtSession.AppVendor) - $($adtSession.AppName) script."
     
     # Retrieve the currently logged-on console user
     $localUserFull = Get-CimInstance -ClassName Win32_ComputerSystem | select-object -ExpandProperty UserName
     
     Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting initial checks to determine if we can show the popup or exit from the script if not..."
 
-    $registrypath  = "HKCU:\Software\WOW6432Node\CompanyName\ComputerManagement\Autopilot"
-    $regKey = 'Autopilot'
     
-
     # check key exists, if not, create it
     $ValidateRegKey = Test-Registrykey $registrypath
     If ($ValidateRegKey -eq $false) {
         # create reg key as it doesn't exist
         New-Item -Path $registrypath -Force
-        }
+    }
     else
-        {}
+    {}
 
     # Get Registry SID of logged in user
     Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Getting Registry SID of logged in user"
@@ -200,19 +219,19 @@ function Install-ADTDeployment
     New-PSDrive -Name 'HKU' -PSProvider 'Registry' -Root 'HKEY_USERS' | Out-Null
     
     $TZSvalue = $null
-    try {$TZSvalue = Get-ADTRegistryKey -Key $registrypath -Name $regKey
+    try {
+        $TZSvalue = Get-ADTRegistryKey -Key $registrypath -Name $regKey
 
     }
     catch {}
     Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TZSvalue: $TZSValue"
     
-    If ($TZSvalue){
-    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "HKCU Registry value found, exiting script: $TZSvalue"
-    Remove-PSDrive -Name 'HKU' -ErrorAction SilentlyContinue
-    Cleanup
+    If ($TZSvalue) {
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "HKCU Registry value found, exiting script: $TZSvalue"
+        Remove-PSDrive -Name 'HKU' -ErrorAction SilentlyContinue
+        Cleanup
     }
-    else
-    {
+    else {
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "HKCU Registry value NOT found, continuing script: $TZSvalue"
     }
 
@@ -227,13 +246,13 @@ function Install-ADTDeployment
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "EnrollDateOK = $EnrollmentDateOK, let's do stuff..." 
 
         # Retrieve system locale and regional settings
-        $CountryNow=$(get-winhomelocation).HomeLocation
+        $CountryNow = $(get-winhomelocation).HomeLocation
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Country identified as '$CountryNow'"
-        $GeoIDNow=$(get-winhomelocation).GeoId
+        $GeoIDNow = $(get-winhomelocation).GeoId
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "GeoID identified as '$GeoIDNow'"
         
         # Retrieve current time zone information
-        $TimeZoneNow=get-timezone
+        $TimeZoneNow = get-timezone
         $TimeZoneId = $TimeZoneNow.Id
         $TimeZoneStandardName = $TimeZoneNow.StandardName
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZoneNow identified as '$TimeZoneNow'"
@@ -241,9 +260,9 @@ function Install-ADTDeployment
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZoneStandardName = $TimeZoneStandardName"
 
         # Retrieve current keyboard and region settings
-        $OSLanguageNow=$(get-culture).Name
-        $KeyboardNow=(Get-WinUserLanguageList).InputMethodTips
-        $DateFormatNow=(get-culture).DateTimeFormat.ShortDatePattern
+        $OSLanguageNow = $(get-culture).Name
+        $KeyboardNow = (Get-WinUserLanguageList).InputMethodTips
+        $DateFormatNow = (get-culture).DateTimeFormat.ShortDatePattern
         $RegionFormatNow = (get-culture).DisplayName
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "OSLanguageNow identified as '$OSLanguageNow'"
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "KeyboardNow identified as '$KeyboardNow'"
@@ -251,9 +270,9 @@ function Install-ADTDeployment
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "RegionFormatNow identified as '$RegionFormatNow'"
 
         # Read location mapping from CSV file
-        $csv = Import-CSV -Path $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\GeoIDs.csv -Delimiter ';' -Header 'GEOID','Location'
-        $loc = $csv | Where-Object {$_.GEOID -eq $GeoIDNow} | Select-object Location
-	    $locLocation = $loc.Location
+        $csv = Import-CSV -Path $csvGeoIDs -Delimiter ';' -Header 'GEOID', 'Location'
+        $loc = $csv | Where-Object { $_.GEOID -eq $GeoIDNow } | Select-object Location
+        $locLocation = $loc.Location
 	
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Location identified as '$locLocation'"
 
@@ -267,20 +286,20 @@ function Install-ADTDeployment
 
         # Create the main form
         $appTitle = "Please confirm or change your Time Zone"
-        $form=New-Object System.Windows.Forms.Form
+        $form = New-Object System.Windows.Forms.Form
         $form.StartPosition = "CenterScreen"
-        $form.Width=600 # Width of main window
-        $form.Height=450 # Height of main window
+        $form.Width = 600 # Width of main window
+        $form.Height = 450 # Height of main window
         $form.FormBorderStyle = 'Fixed3D' # Fixes the windows in height and width
         $form.MaximizeBox = $false
         $form.Text = $appTitle
 
         # Create label with instructions
-        $label1=New-Object System.Windows.Forms.Label
+        $label1 = New-Object System.Windows.Forms.Label
         $label1.Text = "We have identified the following settings. If they are correct click Confirm. If you would like to change a setting, select the appropriate option from the drop down menu and then click Change (Client will restart)."
-        $label1.Location='20,17' # Position x from left border and y from upper border of the formula
-        $label1.Width=540 # Width of label
-        $label1.Height=40 # Height of label (40 = 2 lines)
+        $label1.Location = '20,17' # Position x from left border and y from upper border of the formula
+        $label1.Width = 540 # Width of label
+        $label1.Height = 40 # Height of label (40 = 2 lines)
         $label1.Font = [System.Drawing.Font]::new("Segoe UI Variable", 9, [System.Drawing.FontStyle]::Regular)
         $form.Controls.Add($label1)
 
@@ -305,35 +324,35 @@ function Install-ADTDeployment
 
         # Create Confirm Button
         $locationy += 60 # Defines y location of buttons in the form
-        $buttonConfirm=New-Object System.Windows.Forms.Button
-        $buttonConfirm.Location="$locationx,$locationy"
-        $buttonConfirm.Width=200
-        $buttonConfirm.Height=35
-        $buttonConfirm.Text='Confirm'
+        $buttonConfirm = New-Object System.Windows.Forms.Button
+        $buttonConfirm.Location = "$locationx,$locationy"
+        $buttonConfirm.Width = 200
+        $buttonConfirm.Height = 35
+        $buttonConfirm.Text = 'Confirm'
         $buttonConfirm.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $form.Controls.Add($buttonConfirm)
         
 
         # Create Change Button (initially disabled)
-        $buttonChange=New-Object System.Windows.Forms.Button
-        $buttonChange.Location="$($locationx+300),$locationy"
-        $buttonChange.Width=200
-        $buttonChange.Height=35
-        $buttonChange.Text='Change'
-        $buttonChange.Enabled=$false
+        $buttonChange = New-Object System.Windows.Forms.Button
+        $buttonChange.Location = "$($locationx+300),$locationy"
+        $buttonChange.Width = 200
+        $buttonChange.Height = 35
+        $buttonChange.Text = 'Change'
+        $buttonChange.Enabled = $false
         $buttonChange.DialogResult = [System.Windows.Forms.DialogResult]::CANCEL
         $form.Controls.Add($buttonChange)
 
         # Create optical line around the textboxes
-        $AdditionalOptionsBox=New-Object System.Windows.Forms.Label
+        $AdditionalOptionsBox = New-Object System.Windows.Forms.Label
         $locationx = 18 # Position x from left border 
         $locationy = 65 # Position y from upper border
-        $AdditionalOptionsBox.Location="$locationx,$locationy"
-        $AdditionalOptionsBox.Width=540 # Width of border
-        $AdditionalOptionsBox.Height=185 # Height of border
+        $AdditionalOptionsBox.Location = "$locationx,$locationy"
+        $AdditionalOptionsBox.Width = 540 # Width of border
+        $AdditionalOptionsBox.Height = 185 # Height of border
         $AdditionalOptionsBox.Font = [System.Drawing.Font]::new("SYSTEM", 9, [System.Drawing.FontStyle]::Regular)
         $AdditionalOptionsBox.ForeColor = "Black" # color
-        $AdditionalOptionsBox.name="AdditionalOptionsBox"
+        $AdditionalOptionsBox.name = "AdditionalOptionsBox"
         $AdditionalOptionsBox.BorderStyle = 1 
 
         ############################################
@@ -343,40 +362,39 @@ function Install-ADTDeployment
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Start building 1st dropdown box..."
 
         # Extract Time Zone values from CSV files
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: ######################## Start extract Time Zone settings ########################"
-            $TimeZoneString=$(select-string -Path $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\zonemapping.csv -Pattern $locLocation)
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: TimeZoneString identified as '$TimeZoneString'"    
-            $TimeZoneNow=$($TimeZoneString -split ',')[2]
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: TimeZone currently identified as '$TimeZoneNow'"
-            $TimeZoneDropDownitem = $($TimeZoneString -split ':')[2]
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: TimeZoneDropDownitem = '$TimeZoneDropDownitem'"     
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: ######################## End extract Time Zone settings ########################"
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: ######################## Start extract Time Zone settings ########################"
+        $TimeZoneString = $(select-string -Path $csvZoneMapping -Pattern $locLocation)
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: TimeZoneString identified as '$TimeZoneString'"    
+        $TimeZoneNow = $($TimeZoneString -split ',')[2]
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: TimeZone currently identified as '$TimeZoneNow'"
+        $TimeZoneDropDownitem = $($TimeZoneString -split ':')[2]
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: TimeZoneDropDownitem = '$TimeZoneDropDownitem'"     
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: ######################## End extract Time Zone settings ########################"
         
         # Create dropdown for time zone selection
         
         $DropDownBox = New-Object System.Windows.Forms.ComboBox
         $DropDownBox.Location = "25,105" # Position x from left border and y from upper border of the formula
-        $DropDownBox.Size = New-Object System.Drawing.Size(520,25) # Width and Height of drop-down
+        $DropDownBox.Size = New-Object System.Drawing.Size(520, 25) # Width and Height of drop-down
         $DropDownBox.DropDownHeight = 220 # Height when drop-down is dropped ;-)
         $Form.Controls.Add($DropDownBox) 
         
         # Enable Change button when dropdown is clicked
         $DropDownBox.Add_Click(
             {
-            $buttonChange.Enabled=$true
-            $buttonConfirm.Enabled=$false
+                $buttonChange.Enabled = $true
+                $buttonConfirm.Enabled = $false
             })
 
         # Populate dropdown with time zone options from CSV
-        [array]$DropDownArray = (Get-Content $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\zonemapping.csv)
-        foreach ($item in $DropDownArray) 
-            {
-                [void]$DropDownBox.Items.Add($item)
-            } 
+        [array]$DropDownArray = (Get-Content $csvZoneMapping)
+        foreach ($item in $DropDownArray) {
+            [void]$DropDownBox.Items.Add($item)
+        } 
         
         #set default to whatever we detected in the beginning 
         $DropDownBox.TEXT = $TimeZoneNow # was $TimeZone
-        $DropDownBox.SelectedItem = $DropDownBox.Items[$TimeZoneDropDownitem-1]  
+        $DropDownBox.SelectedItem = $DropDownBox.Items[$TimeZoneDropDownitem - 1]  
 
 
         ############################################
@@ -389,7 +407,7 @@ function Install-ADTDeployment
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: ######################## Start extract Language settings ########################"
 
         # Datei einlesen und nur die erste Spalte (Language) extrahieren
-        $CSVFile = "$envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\WindowsLCID.csv"
+        $CSVFile = $csvWindowsLCID
         $CSVContent = Get-Content $CSVFile | ForEach-Object { ($_ -split ',')[0] }
 
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "DEBUG: Extracted languages: $($CSVContent -join ', ')"
@@ -403,15 +421,15 @@ function Install-ADTDeployment
         # Create dropdown for language selection
         $DropDownBox2 = New-Object System.Windows.Forms.ComboBox
         $DropDownBox2.Location = "25,165" # Position x from left border and y from upper border of the formula
-        $DropDownBox2.Size = New-Object System.Drawing.Size(520,25) # Width and Height of drop-down
+        $DropDownBox2.Size = New-Object System.Drawing.Size(520, 25) # Width and Height of drop-down
         $DropDownBox2.DropDownHeight = 220 # Height when drop-down is dropped
         $Form.Controls.Add($DropDownBox2) 
 
         # Enable Change button when dropdown is clicked
         $DropDownBox2.Add_Click({
-            $buttonChange.Enabled = $true
-            $buttonConfirm.Enabled = $false
-        })
+                $buttonChange.Enabled = $true
+                $buttonConfirm.Enabled = $false
+            })
 
         # Populate dropdown with extracted language names
         foreach ($item in $CSVContent) {
@@ -433,7 +451,7 @@ function Install-ADTDeployment
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Start extract keyboard settings"
 
         # Read file and extract first column
-        $CSVFile = "$envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\WindowsLCID.csv"
+        $CSVFile = $csvWindowsLCID
         $CSVContent = Get-Content $CSVFile | ForEach-Object { ($_ -split ',')[0] }
 
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Extracted keyboards: $($CSVContent -join ', ')"
@@ -457,15 +475,15 @@ function Install-ADTDeployment
         # Create dropdown for language selection
         $DropDownBox3 = New-Object System.Windows.Forms.ComboBox
         $DropDownBox3.Location = "25,225" # Position x from left border and y from upper border of the formula
-        $DropDownBox3.Size = New-Object System.Drawing.Size(520,25) # Width and Height of drop-down
+        $DropDownBox3.Size = New-Object System.Drawing.Size(520, 25) # Width and Height of drop-down
         $DropDownBox3.DropDownHeight = 220 # Height when drop-down is dropped
         $Form.Controls.Add($DropDownBox3) 
 
         # Enable Change button when dropdown is clicked
         $DropDownBox3.Add_Click({
-            $buttonChange.Enabled = $true
-            $buttonConfirm.Enabled = $false
-        })
+                $buttonChange.Enabled = $true
+                $buttonConfirm.Enabled = $false
+            })
 
         # Populate dropdown with extracted language names
         foreach ($item in $CSVContent) {
@@ -494,11 +512,11 @@ function Install-ADTDeployment
             }
         )
 
-                #$Form.Dispose()        
+        #$Form.Dispose()        
 
         $result = $form.ShowDialog()
 
-        if($result -eq 'OK'){
+        if ($result -eq 'OK') {
             Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Result: $result. Nothing changed. Set eventIDTrigger=false"
             $eventIDTrigger = $false
             Set-Content -Path "$envProgramData\LanguageSettingsConfirmed.ps1.tag" -Value "Confirmed"     
@@ -514,172 +532,174 @@ function Install-ADTDeployment
         
 
         
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting to change the timezone settings for the current user."
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting to change the timezone settings for the current user."
             
 
-            $x = $DropDownBox.SelectedItem
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Chosen timezone: $x"
+        $x = $DropDownBox.SelectedItem
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Chosen timezone: $x"
 
-            $SetTimeZone=$($DropDownBox.SelectedItem -split ',')[2]
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "SetTimeZone based on dropdown = '$SetTimezone'"
+        $SetTimeZone = $($DropDownBox.SelectedItem -split ',')[2]
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "SetTimeZone based on dropdown = '$SetTimezone'"
 
-            $TimeZoneString=$(select-string -Path $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\zonemapping.csv -Pattern $locLocation)
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZoneString identified as '$TimeZoneString'"
-            $TimeZoneNow=$($TimeZoneString -split ',')[2]
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZone currently identified as '$TimeZoneNow'"
+        $TimeZoneString = $(select-string -Path $csvZoneMapping -Pattern $locLocation)
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZoneString identified as '$TimeZoneString'"
+        $TimeZoneNow = $($TimeZoneString -split ',')[2]
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZone currently identified as '$TimeZoneNow'"
 
-            # export list of available timezones on this computer..
-            Get-TimeZone -listavailable | ConvertTo-Csv -NoTypeInformation | Out-File -FilePath $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\timeZones.csv -Encoding utf8 
-            $TimeZones = $(select-string -Path $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\timezones.csv -Pattern $SetTimezone)
+        # export list of available timezones on this computer..
+        Get-TimeZone -listavailable | ConvertTo-Csv -NoTypeInformation | Out-File -FilePath $csvTimeZones -Encoding utf8 
+        $TimeZones = $(select-string -Path $csvTimeZones -Pattern $SetTimezone)
             
-            if(-not $TimeZones){
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Severity 2 -Message "WARNING: No entry for '$SetTimezone' found. "
-                $TimeZoneStandardName = "Unknown"
-            }
-            else{
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZones = $TimeZones"
+        if (-not $TimeZones) {
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Severity 2 -Message "WARNING: No entry for '$SetTimezone' found. "
+            $TimeZoneStandardName = "Unknown"
+        }
+        else {
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZones = $TimeZones"
 
-                $TimeZoneStandardName=$($TimeZones -split '","')[2]
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZoneStandardName identified as '$TimeZoneStandardName'"
+            $TimeZoneStandardName = $($TimeZones -split '","')[2]
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "TimeZoneStandardName identified as '$TimeZoneStandardName'"
     
-                $SetTimezone = $TimeZoneStandardName
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "SetTimeZone (after new logic)  = '$SetTimezone'"
+            $SetTimezone = $TimeZoneStandardName
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "SetTimeZone (after new logic)  = '$SetTimezone'"
     
-                try {
-                    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Setting the TimeZone to '$SetTimeZone'"
-                    Set-TimeZone -Name $SetTimeZone -ErrorAction silentlycontinue
-                    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Successfully set TimeZone to '$SetTimeZone'"
-                }
-                catch {
-                    $message = $_
-                    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "FAILED to set TimeZone to '$SetTimeZone' the error was: $message"
-                }
+            try {
+                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Setting the TimeZone to '$SetTimeZone'"
+                Set-TimeZone -Name $SetTimeZone -ErrorAction silentlycontinue
+                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Successfully set TimeZone to '$SetTimeZone'"
             }
+            catch {
+                $message = $_
+                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "FAILED to set TimeZone to '$SetTimeZone' the error was: $message"
+            }
+        }
             
 
 
         
-            ######### Start setting display language
+        ######### Start setting display language
        
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting to change the language settings for the current user."
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting to change the language settings for the current user."
             
 
-            $y = $DropDownBox2.SelectedItem
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Chosen language: $y"
+        $y = $DropDownBox2.SelectedItem
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Chosen language: $y"
 
-            $languageline = Select-String -Path $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\WindowsLCID.csv -Pattern "$y" | ForEach-Object { $_.Line }
+        $languageline = Select-String -Path $csvWindowsLCID -Pattern "$y" | ForEach-Object { $_.Line }
 
-            # Check, if something is found
-            if ($languageLine) {
-                # Seperate by comma
-                $fields = $languageLine -split ','
+        # Check, if something is found
+        if ($languageLine) {
+            # Seperate by comma
+            $fields = $languageLine -split ','
 
-                # Extract language code and keyboard layout
-                $languageCode = $fields[1]
+            # Extract language code and keyboard layout
+            $languageCode = $fields[1]
                 
 
-                # Debugging
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Language Code: $languageCode"
+            # Debugging
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Language Code: $languageCode"
                
-                Set-WinUILanguageOverride -Language $languageCode
+            Set-WinUILanguageOverride -Language $languageCode
 
-            }
-            else {
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "No item found for '$y'!"
-                $y = $null
-            }
+        }
+        else {
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "No item found for '$y'!"
+            $y = $null
+        }
         
-            ######### Start setting keyboard layout
+        ######### Start setting keyboard layout
         
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting to change the keyboard settings for the current user."
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Starting to change the keyboard settings for the current user."
             
 
-            $z = $DropDownBox3.SelectedItem
-            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Chosen keyboard: $z"
+        $z = $DropDownBox3.SelectedItem
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Chosen keyboard: $z"
 
-            $languageline = Select-String -Path $envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\WindowsLCID.csv -Pattern "$z" | ForEach-Object { $_.Line }
+        $languageline = Select-String -Path $csvWindowsLCID -Pattern "$z" | ForEach-Object { $_.Line }
 
-            # Check, if something is found
-            if ($languageLine) {
-                # Seperate by comma
-                $fields = $languageLine -split ','
+        # Check, if something is found
+        if ($languageLine) {
+            # Seperate by comma
+            $fields = $languageLine -split ','
 
-                # Extract language code and keyboard layout
-                $languageCode = $fields[1] # e.g. de-DE
-                $keyboardLayout = $fields[3] # e.g. 0407:00000407
+            # Extract language code and keyboard layout
+            $languageCode = $fields[1] # e.g. de-DE
+            $keyboardLayout = $fields[3] # e.g. 0407:00000407
 
-                # Debugging
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Language Code: $languageCode"
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Keyboard Layout: $keyboardLayout"
+            # Debugging
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Language Code: $languageCode"
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Keyboard Layout: $keyboardLayout"
 
-                $LangList = New-WinUserLanguageList "$languageCode"
-                $LangList[0].InputMethodTips.Add("$keyboardLayout")
+            $LangList = New-WinUserLanguageList "$languageCode"
+            $LangList[0].InputMethodTips.Add("$keyboardLayout")
 
-                $HKCU = "Registry::HKEY_CURRENT_USER"
-                function Set-RegistryValue {
-                    param (
-                        [string]$Path,
-                        [string]$Name,
-                        [string]$Type,
-                        [string]$Value
-                    )
+            $HKCU = "Registry::HKEY_CURRENT_USER"
+            function Set-RegistryValue {
+                param (
+                    [string]$Path,
+                    [string]$Name,
+                    [string]$Type,
+                    [string]$Value
+                )
                     
-                    if (-not (Test-Path $Path)) {
-                        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Registry key $Path does not exist. Creating key."
-                        New-Item -Path $Path -Force | Out-Null
-                    }
+                if (-not (Test-Path $Path)) {
+                    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Registry key $Path does not exist. Creating key."
+                    New-Item -Path $Path -Force | Out-Null
+                }
                 
-                    try {
-                        $currentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name
-                        if ($currentValue -ne $Value) {
-                            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "$Name is not set to $Value. Updating $Name."
-                            Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type
-                            $RebootRequired = $true
-                        } else {
-                            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "$Name is already set to $Value."
-                        }
-                    } catch {
-                        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "$Name does not exist. Creating and setting it to $Value."
-                        New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+                try {
+                    $currentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name
+                    if ($currentValue -ne $Value) {
+                        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "$Name is not set to $Value. Updating $Name."
+                        Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type
                         $RebootRequired = $true
                     }
+                    else {
+                        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "$Name is already set to $Value."
+                    }
                 }
-
-                Set-RegistryValue -Path "$HKCU\Control Panel\International\User Profile" -Name "InputMethodOverride" -Type "String" -Value $keyboardLayout
-                Set-RegistryValue -Path "$HKCU\Control Panel\International\User Profile System Backup" -Name "InputMethodOverride" -Type "String" -Value $keyboardLayout
-                Set-WinUserLanguageList $LangList -Force
-
-            } else {
-                Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "No item found for '$z'!"
+                catch {
+                    Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "$Name does not exist. Creating and setting it to $Value."
+                    New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+                    $RebootRequired = $true
+                }
             }
+
+            Set-RegistryValue -Path "$HKCU\Control Panel\International\User Profile" -Name "InputMethodOverride" -Type "String" -Value $keyboardLayout
+            Set-RegistryValue -Path "$HKCU\Control Panel\International\User Profile System Backup" -Name "InputMethodOverride" -Type "String" -Value $keyboardLayout
+            Set-WinUserLanguageList $LangList -Force
+
+        }
+        else {
+            Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "No item found for '$z'!"
+        }
         
         $Data = [PSCustomObject]@{
-            languagecode = $languageCode
+            languagecode   = $languageCode
             KeyboardLayout = $keyboardLayout
         }
 
-            $CsvPath = "$envProgramData\CompanyName\SetTimeZone\SetTimeZone-GUI\Files\results.csv"
-            $Data | ConvertTo-Csv -NoTypeInformation -Delimiter "," | ForEach-Object { $_ -replace '"', '' } | Set-Content -Path $CsvPath -Encoding UTF8
+        $Data | ConvertTo-Csv -NoTypeInformation -Delimiter "," | ForEach-Object { $_ -replace '"', '' } | Set-Content -Path $CsvResults -Encoding UTF8
 
                    
         
         ## Additional information: -Type: DWord, String, Binary
         
-        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Set registry key: -Path: HKCU:\Software\WOW6432Node\CompanyName\ComputerManagement\Autopilot - Name: Autopilot - Type: String - Value: "
+        Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "Set registry key: -Path: HKCU:\Software\WOW6432Node\$($adtSession.AppVendor)\ComputerManagement\Autopilot - Name: Autopilot - Type: String - Value: "
         Set-ADTRegistryKey -Key $registrypath -Name 'Autopilot' -Type 'String' -Value 'TimeZoneSet'
         
 
 
-        if($eventIDTrigger -eq $true){
-            Write-EventLog -LogName "Application" -Source "Set-TimeZone" -EventID 1102 -EntryType Information -Message "A localization setting was modified. Trigger scheduled task to set global settings" -Category 1 -RawData 10,20
-        } else{
-            Write-EventLog -LogName "Application" -Source "Set-TimeZone" -EventID 1102 -EntryType Information -Message "No settings were modified. Trigger scheduled task to run the cleanup" -Category 1 -RawData 10,20
-            }
+        if ($eventIDTrigger -eq $true) {
+            Write-EventLog -LogName "Application" -Source $GVAppName -EventID 1102 -EntryType Information -Message "A localization setting was modified. Trigger scheduled task to set language settings" -Category 1 -RawData 10, 20
+        }
+        else {
+            Write-EventLog -LogName "Application" -Source $GVAppName -EventID 1102 -EntryType Information -Message "No settings were modified. Trigger scheduled task to run the cleanup" -Category 1 -RawData 10, 20
+        }
         
           
     }
-    else
-    {
+    else {
         Write-ADTLogEntry -Source $adtSession.InstallPhase -LogType 'CMTrace' -Message "EnrollDateOK = $EnrollmentDateOK , will NOT do anything...let's exit"
     } 
 
@@ -695,8 +715,7 @@ function Install-ADTDeployment
 
 }
 
-function Uninstall-ADTDeployment
-{
+function Uninstall-ADTDeployment {
     ##================================================
     ## MARK: Pre-Uninstall
     ##================================================
@@ -717,11 +736,9 @@ function Uninstall-ADTDeployment
     $adtSession.InstallPhase = $adtSession.DeploymentType
 
     ## Handle Zero-Config MSI uninstallations.
-    if ($adtSession.UseDefaultMsi)
-    {
+    if ($adtSession.UseDefaultMsi) {
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
-        if ($adtSession.DefaultMstFile)
-        {
+        if ($adtSession.DefaultMstFile) {
             $ExecuteDefaultMSISplat.Add('Transform', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
@@ -738,8 +755,7 @@ function Uninstall-ADTDeployment
     ## <Perform Post-Uninstallation tasks here>
 }
 
-function Repair-ADTDeployment
-{
+function Repair-ADTDeployment {
     ##================================================
     ## MARK: Pre-Repair
     ##================================================
@@ -760,11 +776,9 @@ function Repair-ADTDeployment
     $adtSession.InstallPhase = $adtSession.DeploymentType
 
     ## Handle Zero-Config MSI repairs.
-    if ($adtSession.UseDefaultMsi)
-    {
+    if ($adtSession.UseDefaultMsi) {
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
-        if ($adtSession.DefaultMstFile)
-        {
+        if ($adtSession.DefaultMstFile) {
             $ExecuteDefaultMSISplat.Add('Transform', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
@@ -792,31 +806,25 @@ $ProgressPreference = [System.Management.Automation.ActionPreference]::SilentlyC
 Set-StrictMode -Version 1
 
 # Import the module and instantiate a new session.
-try
-{
-    $moduleName = if ([System.IO.File]::Exists("$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1"))
-    {
+try {
+    $moduleName = if ([System.IO.File]::Exists("$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1")) {
         Get-ChildItem -LiteralPath $PSScriptRoot\PSAppDeployToolkit -Recurse -File | Unblock-File -ErrorAction Ignore
         "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1"
     }
-    else
-    {
+    else {
         'PSAppDeployToolkit'
     }
     Import-Module -FullyQualifiedName @{ ModuleName = $moduleName; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.0.5' } -Force
-    try
-    {
+    try {
         $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
         $adtSession = Open-ADTSession -SessionState $ExecutionContext.SessionState @adtSession @iadtParams -PassThru
     }
-    catch
-    {
+    catch {
         Remove-Module -Name PSAppDeployToolkit* -Force
         throw
     }
 }
-catch
-{
+catch {
     $Host.UI.WriteErrorLine((Out-String -InputObject $_ -Width ([System.Int32]::MaxValue)))
     exit 60008
 }
@@ -826,11 +834,9 @@ catch
 ## MARK: Invocation
 ##================================================
 
-try
-{
+try {
     Get-Item -Path $PSScriptRoot\PSAppDeployToolkit.* | & {
-        process
-        {
+        process {
             Get-ChildItem -LiteralPath $_.FullName -Recurse -File | Unblock-File -ErrorAction Ignore
             Import-Module -Name $_.FullName -Force
         }
@@ -838,14 +844,12 @@ try
     & "$($adtSession.DeploymentType)-ADTDeployment"
     Close-ADTSession
 }
-catch
-{
+catch {
     Write-ADTLogEntry -Message ($mainErrorMessage = Resolve-ADTErrorRecord -ErrorRecord $_) -Severity 3
     Show-ADTDialogBox -Text $mainErrorMessage -Icon Stop | Out-Null
     Close-ADTSession -ExitCode 60001
 }
-finally
-{
+finally {
     Remove-Module -Name PSAppDeployToolkit* -Force
 }
 
